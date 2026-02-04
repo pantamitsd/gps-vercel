@@ -135,45 +135,78 @@ function haversine(lat1, lon1, lat2, lon2){
   return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-async function punchIn(){
-  if (!GPS) return alert("GPS not ready");
-  if (!mode.value) return alert("Select mode");
-
-  let location_id=null, dist=0;
-
-  if (mode.value === "new") {
-    const name = locName.value.trim();
-    if (!name) return alert("Enter new location name");
-    const { data } = await sb.from("user_locations").insert({
-      user_id: USER.id, name, lat: GPS.lat, lon: GPS.lon
-    }).select().single();
-    location_id = data.id;
-  } else {
-    const { data } = await sb.from("user_locations").select("*").eq("id", locations.value).single();
-    dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
-    if (dist > 500) return msg.innerText = "❌ Not near existing location";
-    location_id = data.id;
+  async function punchIn(){
+    if (!GPS) return alert("GPS not ready");
+    if (!mode.value) return alert("Select mode");
+  
+    const today = new Date().toISOString().slice(0,10);
+  
+    // 🔴 Duplicate Punch IN check (same day + same location)
+    if (mode.value === "existing") {
+      const { data: already } = await sb
+        .from("attendance")
+        .select("id")
+        .eq("user_id", USER.id)
+        .eq("punch_type", "IN")
+        .eq("location_id", locations.value)
+        .gte("created_at", today + "T00:00:00")
+        .lte("created_at", today + "T23:59:59");
+  
+      if (already && already.length > 0) {
+        msg.innerText = "❌ Aap is location par aaj Punch IN kar chuke ho";
+        return;
+      }
+    }
+  
+    let location_id = null, dist = 0;
+  
+    if (mode.value === "new") {
+      const name = locName.value.trim();
+      if (!name) return alert("Enter new location name");
+  
+      const { data } = await sb.from("user_locations").insert({
+        user_id: USER.id, 
+        name, 
+        lat: GPS.lat, 
+        lon: GPS.lon
+      }).select().single();
+  
+      location_id = data.id;
+  
+    } else {
+      const { data } = await sb
+        .from("user_locations")
+        .select("*")
+        .eq("id", locations.value)
+        .single();
+  
+      dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
+      if (dist > 500) {
+        msg.innerText = "❌ Not near existing location";
+        return;
+      }
+      location_id = data.id;
+    }
+  
+    const file = photoInput.files[0];
+    if (!file) return alert("Photo required");
+  
+    const path = `${USER.id}/${Date.now()}_${file.name}`;
+    await sb.storage.from("attendance-photos").upload(path, file);
+  
+    await sb.from("attendance").insert({
+      user_id: USER.id,
+      username: USER.username,
+      location_id,
+      lat: GPS.lat,
+      lon: GPS.lon,
+      distance_meters: dist,
+      photo_url: path,
+      punch_type: "IN"
+    });
+  
+    msg.innerText = "✅ Punch IN success";
   }
-
-  const file = photoInput.files[0];
-  if (!file) return alert("Photo required");
-
-  const path = `${USER.id}/${Date.now()}_${file.name}`;
-  await sb.storage.from("attendance-photos").upload(path, file);
-
-  await sb.from("attendance").insert({
-    user_id: USER.id,
-    username: USER.username,
-    location_id,
-    lat: GPS.lat,
-    lon: GPS.lon,
-    distance_meters: dist,
-    photo_url: path,
-    punch_type: "IN"
-  });
-
-  msg.innerText = "✅ Punch IN success";
-}
 
 async function punchOut(){
   if (!GPS) return alert("GPS not ready");
@@ -204,3 +237,4 @@ async function punchOut(){
 </script>
 </body>
 </html>
+
