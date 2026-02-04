@@ -6,29 +6,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
     body { font-family: Arial, sans-serif; padding: 16px; max-width: 520px; margin: auto; }
-    h2 { margin-bottom: 8px; }
     input, select, button { width: 100%; padding: 10px; margin: 6px 0; }
-    button { cursor: pointer; }
     pre { background:#f5f5f5; padding:10px; white-space: pre-wrap; }
-    .ok { color: green; }
-    .err { color: red; }
-    .hide { display: none; }
-
-    /* Camera UX */
-    #photoInput { display: none; }
-    #preview {
-      width: 100%;
-      margin-top: 8px;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-    }
+    .hide { display:none; }
+    #photoInput { display:none; }
+    #preview { width:100%; margin-top:8px; border-radius:8px; border:1px solid #ddd; }
   </style>
 </head>
 <body>
 
 <h2>📍Swiss Military Attendance Portal</h2>
 
-<!-- LOGIN -->
 <div id="loginBox">
   <input id="username" placeholder="Username"/>
   <input id="password" type="password" placeholder="Password"/>
@@ -36,10 +24,8 @@
   <p id="loginMsg"></p>
 </div>
 
-<!-- APP -->
 <div id="appBox" class="hide">
   <p>Welcome, <b id="who"></b></p>
-
   <pre id="coords">Fetching GPS...</pre>
 
   <select id="mode">
@@ -56,128 +42,165 @@
     <input id="locName" placeholder="Enter new location name"/>
   </div>
 
-  <!-- 📸 Camera UX (NEW UI ONLY) -->
+  <!-- 📸 Camera UI (added) -->
   <button id="openCameraBtn">📸 Take Photo</button>
   <input type="file" id="photoInput" accept="image/*" capture="environment"/>
   <img id="preview" class="hide"/>
 
   <button id="punchBtn">✅ Punch IN</button>
   <button id="punchOutBtn">⛔ Punch OUT</button>
-
   <p id="msg"></p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  const SUPABASE_URL = "https://qvjjinoubpqwtxbujkrd.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2amppbm91YnBxd3R4YnVqa3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUyNjksImV4cCI6MjA4NDQ4MTI2OX0.9rr0oUJWJBk0e9hSz-kVF9K-N6m6mwZEnSCQvxjI5XU";
+const SUPABASE_URL = "https://qvjjinoubpqwtxbujkrd.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2amppbm91YnBxd3R4YnVqa3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUyNjksImV4cCI6MjA4NDQ4MTI2OX0.9rr0oUJWJBk0e9hSz-kVF9K-N6m6mwZEnSCQvxjI5XU";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let USER=null, GPS=null;
 
-  let USER = null;
-  let GPS = null;
+const loginBox = document.getElementById("loginBox");
+const appBox = document.getElementById("appBox");
+const loginMsg = document.getElementById("loginMsg");
+const who = document.getElementById("who");
+const coords = document.getElementById("coords");
+const locations = document.getElementById("locations");
+const existingBox = document.getElementById("existingBox");
+const newBox = document.getElementById("newBox");
+const mode = document.getElementById("mode");
+const msg = document.getElementById("msg");
+const photoInput = document.getElementById("photoInput");
+const preview = document.getElementById("preview");
 
-  const loginBox = document.getElementById("loginBox");
-  const appBox = document.getElementById("appBox");
-  const loginMsg = document.getElementById("loginMsg");
-  const who = document.getElementById("who");
-  const coords = document.getElementById("coords");
-  const locations = document.getElementById("locations");
-  const existingBox = document.getElementById("existingBox");
-  const newBox = document.getElementById("newBox");
-  const mode = document.getElementById("mode");
-  const msg = document.getElementById("msg");
+loginBtn.onclick = login;
+punchBtn.onclick = punchIn;
+punchOutBtn.onclick = punchOut;
+mode.onchange = onModeChange;
 
-  const photoInput = document.getElementById("photoInput");
-  const preview = document.getElementById("preview");
-  const openCameraBtn = document.getElementById("openCameraBtn");
+// 📸 camera UX
+openCameraBtn.onclick = ()=> photoInput.click();
+photoInput.onchange = ()=>{
+  const f = photoInput.files[0];
+  if(f){
+    preview.src = URL.createObjectURL(f);
+    preview.classList.remove("hide");
+  }
+};
 
-  document.getElementById("loginBtn").onclick = login;
-  document.getElementById("punchBtn").onclick = punchIn;
-  document.getElementById("punchOutBtn").onclick = punchOut;
-  mode.onchange = onModeChange;
+async function login(){
+  loginMsg.innerText = "Logging in...";
+  const u = username.value.trim().toLowerCase();
+  const p = password.value.trim();
 
-  // 📸 Camera button logic
-  openCameraBtn.onclick = () => photoInput.click();
+  const { data, error } = await sb.from("users").select("*").ilike("username", u).single();
+  if (error || !data) return loginMsg.innerText = "❌ User not found";
+  if (data.password !== p) return loginMsg.innerText = "❌ Wrong password";
 
-  photoInput.onchange = () => {
-    const file = photoInput.files[0];
-    if (file) {
-      preview.src = URL.createObjectURL(file);
-      preview.classList.remove("hide");
-    }
-  };
+  USER = data;
+  who.innerText = USER.username;
+  loginBox.classList.add("hide");
+  appBox.classList.remove("hide");
+  getLocation();
+  loadLocations();
+}
 
-  async function login(){
-    loginMsg.innerText = "Logging in...";
-    const u = username.value.trim().toLowerCase();
-    const p = password.value.trim();
+function getLocation(){
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+      GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      coords.innerText = `Lat: ${GPS.lat}\nLon: ${GPS.lon}`;
+    },
+    ()=>coords.innerText = "❌ Location permission denied",
+    { enableHighAccuracy:true }
+  );
+}
 
-    const { data, error } = await sb
-      .from("users")
-      .select("*")
-      .ilike("username", u)
-      .single();
+function onModeChange(){
+  existingBox.classList.toggle("hide", mode.value !== "existing");
+  newBox.classList.toggle("hide", mode.value !== "new");
+}
 
-    if (error || !data) return loginMsg.innerText = "❌ User not found";
-    if (data.password !== p) return loginMsg.innerText = "❌ Wrong password";
+async function loadLocations(){
+  const { data } = await sb.from("user_locations").select("id,name").eq("user_id", USER.id);
+  locations.innerHTML = (data || []).map(l => `<option value="${l.id}">${l.name}</option>`).join("");
+}
 
-    USER = data;
-    who.innerText = USER.username;
-    loginBox.classList.add("hide");
-    appBox.classList.remove("hide");
+function haversine(lat1, lon1, lat2, lon2){
+  const R=6371000;
+  const dlat=(lat2-lat1)*Math.PI/180;
+  const dlon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dlat/2)**2 +
+    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dlon/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
 
-    getLocation();
-    loadLocations();
+async function punchIn(){
+  if (!GPS) return alert("GPS not ready");
+  if (!mode.value) return alert("Select mode");
+
+  let location_id=null, dist=0;
+
+  if (mode.value === "new") {
+    const name = locName.value.trim();
+    if (!name) return alert("Enter new location name");
+    const { data } = await sb.from("user_locations").insert({
+      user_id: USER.id, name, lat: GPS.lat, lon: GPS.lon
+    }).select().single();
+    location_id = data.id;
+  } else {
+    const { data } = await sb.from("user_locations").select("*").eq("id", locations.value).single();
+    dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
+    if (dist > 500) return msg.innerText = "❌ Not near existing location";
+    location_id = data.id;
   }
 
-  function getLocation(){
-    navigator.geolocation.getCurrentPosition(
-      (pos)=>{
-        GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        coords.innerText = `Lat: ${GPS.lat}\nLon: ${GPS.lon}`;
-      },
-      ()=>coords.innerText = "❌ Location permission denied",
-      { enableHighAccuracy:true }
-    );
-  }
+  const file = photoInput.files[0];
+  if (!file) return alert("Photo required");
 
-  function onModeChange(){
-    existingBox.classList.toggle("hide", mode.value !== "existing");
-    newBox.classList.toggle("hide", mode.value !== "new");
-  }
+  const path = `${USER.id}/${Date.now()}_${file.name}`;
+  await sb.storage.from("attendance-photos").upload(path, file);
 
-  async function loadLocations(){
-    const { data } = await sb
-      .from("user_locations")
-      .select("id,name")
-      .eq("user_id", USER.id);
+  await sb.from("attendance").insert({
+    user_id: USER.id,
+    username: USER.username,
+    location_id,
+    lat: GPS.lat,
+    lon: GPS.lon,
+    distance_meters: dist,
+    photo_url: path,
+    punch_type: "IN"
+  });
 
-    locations.innerHTML = (data || [])
-      .map(l => `<option value="${l.id}">${l.name}</option>`)
-      .join("");
-  }
+  msg.innerText = "✅ Punch IN success";
+}
 
-  function haversine(lat1, lon1, lat2, lon2){
-    const R=6371000;
-    const dlat=(lat2-lat1)*Math.PI/180;
-    const dlon=(lon2-lon1)*Math.PI/180;
-    const a=Math.sin(dlat/2)**2 +
-      Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dlon/2)**2;
-    return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  }
+async function punchOut(){
+  if (!GPS) return alert("GPS not ready");
 
-  async function punchIn(){
-    const file = photoInput.files[0];
-    if (!file) return alert("Photo required");
-    msg.innerText = "✅ Punch IN success";
-  }
+  const { data } = await sb.from("user_locations").select("*").eq("id", locations.value).single();
+  const dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
+  if (dist > 500) return msg.innerText = "❌ Aap location ke paas nahi ho";
 
-  async function punchOut(){
-    const file = photoInput.files[0];
-    if (!file) return alert("Photo required");
-    msg.innerText = "✅ Punch OUT success";
-  }
+  const file = photoInput.files[0];
+  if (!file) return alert("Photo required");
+
+  const path = `${USER.id}/${Date.now()}_${file.name}`;
+  await sb.storage.from("attendance-photos").upload(path, file);
+
+  await sb.from("attendance").insert({
+    user_id: USER.id,
+    username: USER.username,
+    location_id: data.id,
+    lat: GPS.lat,
+    lon: GPS.lon,
+    distance_meters: dist,
+    photo_url: path,
+    punch_type: "OUT"
+  });
+
+  msg.innerText = "✅ Punch OUT success";
+}
 </script>
 </body>
 </html>
