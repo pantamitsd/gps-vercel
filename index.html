@@ -31,8 +31,7 @@
 <div id="appBox" class="hide">
   <p>Welcome, <b id="who"></b></p>
 
-  <button id="gpsBtn">📍 Get My Location</button>
-  <pre id="coords">No GPS yet</pre>
+  <pre id="coords">Fetching GPS...</pre>
 
   <select id="mode">
     <option value="">Select Option</option>
@@ -48,6 +47,7 @@
     <input id="locName" placeholder="Enter new location name"/>
   </div>
 
+  <!-- Camera auto open -->
   <input type="file" id="photo" accept="image/*" capture="environment"/>
 
   <button id="punchBtn">✅ Punch IN</button>
@@ -56,11 +56,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  // 🔑 REPLACE THESE TWO
   const SUPABASE_URL = "https://qvjjinoubpqwtxbujkrd.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2amppbm91YnBxd3R4YnVqa3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUyNjksImV4cCI6MjA4NDQ4MTI2OX0.9rr0oUJWJBk0e9hSz-kVF9K-N6m6mwZEnSCQvxjI5XU";
 
-  // ✅ Supabase client
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let USER = null;
@@ -78,37 +76,30 @@
   const msg = document.getElementById("msg");
 
   document.getElementById("loginBtn").onclick = login;
-  document.getElementById("gpsBtn").onclick = getLocation;
   document.getElementById("punchBtn").onclick = punchIn;
   mode.onchange = onModeChange;
 
   async function login(){
     loginMsg.innerText = "Logging in...";
-    const u = document.getElementById("username").value.trim().toLowerCase();
-    const p = document.getElementById("password").value.trim();
-  
+    const u = username.value.trim().toLowerCase();
+    const p = password.value.trim();
+
     const { data, error } = await sb
       .from("users")
       .select("*")
-      .ilike("username", u)   // case-insensitive username match
+      .ilike("username", u)
       .single();
-  
-    if (error || !data) {
-      loginMsg.innerText = "❌ User not found";
-      console.error(error);
-      return;
-    }
-  
-    if (data.password !== p) {
-      loginMsg.innerText = "❌ Wrong password";
-      return;
-    }
-  
+
+    if (error || !data) return loginMsg.innerText = "❌ User not found";
+    if (data.password !== p) return loginMsg.innerText = "❌ Wrong password";
+
     USER = data;
     who.innerText = USER.username;
     loginBox.classList.add("hide");
     appBox.classList.remove("hide");
-    await loadLocations();
+
+    getLocation();        // ✅ AUTO GPS FETCH
+    loadLocations();
   }
 
   function getLocation(){
@@ -117,7 +108,7 @@
         GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         coords.innerText = `Lat: ${GPS.lat}\nLon: ${GPS.lon}`;
       },
-      (err)=>alert("Please allow location access"),
+      ()=>coords.innerText = "❌ Location permission denied",
       { enableHighAccuracy:true }
     );
   }
@@ -128,15 +119,10 @@
   }
 
   async function loadLocations(){
-    const { data, error } = await sb
+    const { data } = await sb
       .from("user_locations")
-      .select("id,name,lat,lon")
+      .select("id,name")
       .eq("user_id", USER.id);
-
-    if (error) {
-      console.error(error);
-      return;
-    }
 
     locations.innerHTML = (data || [])
       .map(l => `<option value="${l.id}">${l.name}</option>`)
@@ -153,43 +139,26 @@
   }
 
   async function punchIn(){
-    msg.innerText = "";
-
-    if (!GPS) return alert("Get GPS first");
+    if (!GPS) return alert("GPS not ready");
     if (!mode.value) return alert("Select mode");
 
     let location_id = null;
     let dist = 0;
 
     if (mode.value === "new") {
-      const name = document.getElementById("locName").value.trim();
-      if (!name) return alert("Enter location name");
-
-      const { data, error } = await sb.from("user_locations").insert({
+      const name = locName.value.trim();
+      const { data } = await sb.from("user_locations").insert({
         user_id: USER.id, name, lat: GPS.lat, lon: GPS.lon
       }).select().single();
-
-      if (error) return alert("Location save failed");
       location_id = data.id;
-
     } else {
-      const { data, error } = await sb
-        .from("user_locations")
-        .select("*")
-        .eq("id", locations.value)
-        .single();
-
-      if (error) return alert("Location fetch failed");
-
+      const { data } = await sb.from("user_locations").select("*").eq("id", locations.value).single();
       dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
-      if (dist > 500) {
-        msg.innerText = "❌ Not near existing location";
-        return;
-      }
+      if (dist > 500) return msg.innerText = "❌ Not near existing location";
       location_id = data.id;
     }
 
-    const file = document.getElementById("photo").files[0];
+    const file = photo.files[0];
     if (!file) return alert("Photo required");
 
     const path = `${USER.id}/${Date.now()}_${file.name}`;
@@ -206,11 +175,7 @@
     });
 
     msg.innerText = "✅ Punch IN success";
-    await loadLocations();
   }
 </script>
 </body>
 </html>
-
-
-
