@@ -47,7 +47,7 @@
     <input id="locName" placeholder="Enter new location name"/>
   </div>
 
-  <!-- Camera auto open -->
+  <!-- Camera -->
   <input type="file" id="photo" accept="image/*" capture="environment"/>
 
   <button id="punchBtn">✅ Punch IN</button>
@@ -98,7 +98,7 @@
     loginBox.classList.add("hide");
     appBox.classList.remove("hide");
 
-    getLocation();        // ✅ AUTO GPS FETCH
+    getLocation();        // Auto GPS
     loadLocations();
   }
 
@@ -145,11 +145,32 @@
     let location_id = null;
     let dist = 0;
 
+    // ❌ Same day duplicate IN block (existing location only)
+    if (mode.value === "existing") {
+      const today = new Date().toISOString().slice(0,10);
+
+      const { data: already } = await sb
+        .from("attendance")
+        .select("id")
+        .eq("user_id", USER.id)
+        .eq("punch_type", "IN")
+        .gte("created_at", today + "T00:00:00")
+        .lte("created_at", today + "T23:59:59");
+
+      if (already && already.length > 0) {
+        msg.innerText = "❌ Aaj ka Punch IN already ho chuka hai";
+        return;
+      }
+    }
+
     if (mode.value === "new") {
       const name = locName.value.trim();
+      if (!name) return alert("Enter new location name");
+
       const { data } = await sb.from("user_locations").insert({
         user_id: USER.id, name, lat: GPS.lat, lon: GPS.lon
       }).select().single();
+
       location_id = data.id;
     } else {
       const { data } = await sb.from("user_locations").select("*").eq("id", locations.value).single();
@@ -166,6 +187,7 @@
 
     await sb.from("attendance").insert({
       user_id: USER.id,
+      username: USER.username,
       location_id,
       lat: GPS.lat,
       lon: GPS.lon,
