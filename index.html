@@ -1,15 +1,18 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Swiss Military Attendance Portal</title>
+  <title>Swiss Military GPS Attendance</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
-    body { font-family: Arial; padding: 16px; }
-    input, select, button { padding: 10px; margin: 6px 0; width: 100%; }
-    pre { background:#f5f5f5; padding:10px; }
+    body { font-family: Arial, sans-serif; padding: 16px; max-width: 520px; margin: auto; }
+    h2 { margin-bottom: 8px; }
+    input, select, button { width: 100%; padding: 10px; margin: 6px 0; }
+    button { cursor: pointer; }
+    pre { background:#f5f5f5; padding:10px; white-space: pre-wrap; }
     .ok { color: green; }
     .err { color: red; }
+    .hide { display: none; }
   </style>
 </head>
 <body>
@@ -17,55 +20,72 @@
 <h2>📍 GPS Attendance (No Backend)</h2>
 
 <!-- LOGIN -->
-<div id="login">
+<div id="loginBox">
   <input id="username" placeholder="Username"/>
   <input id="password" type="password" placeholder="Password"/>
-  <button onclick="login()">Login</button>
+  <button id="loginBtn">Login</button>
   <p id="loginMsg"></p>
 </div>
 
 <!-- APP -->
-<div id="app" style="display:none;">
-  <p>Welcome <b id="who"></b></p>
+<div id="appBox" class="hide">
+  <p>Welcome, <b id="who"></b></p>
 
-  <button onclick="getLocation()">📍 Get My Location</button>
+  <button id="gpsBtn">📍 Get My Location</button>
   <pre id="coords">No GPS yet</pre>
 
-  <select id="mode" onchange="onModeChange()">
+  <select id="mode">
     <option value="">Select Option</option>
     <option value="existing">Existing Location</option>
     <option value="new">New Location</option>
   </select>
 
-  <div id="existingBox" style="display:none;">
+  <div id="existingBox" class="hide">
     <select id="locations"></select>
   </div>
 
-  <div id="newBox" style="display:none;">
+  <div id="newBox" class="hide">
     <input id="locName" placeholder="Enter new location name"/>
   </div>
 
   <input type="file" id="photo" accept="image/*" capture="environment"/>
 
-  <button onclick="punchIn()">✅ Punch IN</button>
+  <button id="punchBtn">✅ Punch IN</button>
   <p id="msg"></p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  // 🔑 Supabase config
-  const SUPABASE_URL = "https://qvjjinoubpqwtxbujkrd.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2amppbm91YnBxd3R4YnVqa3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUyNjksImV4cCI6MjA4NDQ4MTI2OX0.9rr0oUJWJBk0e9hSz-kVF9K-N6m6mwZEnSCQvxjI5XU";
+  // 🔑 REPLACE THESE TWO
+  const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
+  const SUPABASE_ANON_KEY = "YOUR_PUBLIC_ANON_KEY";
 
-  // ✅ FIXED CLIENT
+  // ✅ Supabase client
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let USER = null;
   let GPS = null;
 
+  const loginBox = document.getElementById("loginBox");
+  const appBox = document.getElementById("appBox");
+  const loginMsg = document.getElementById("loginMsg");
+  const who = document.getElementById("who");
+  const coords = document.getElementById("coords");
+  const locations = document.getElementById("locations");
+  const existingBox = document.getElementById("existingBox");
+  const newBox = document.getElementById("newBox");
+  const mode = document.getElementById("mode");
+  const msg = document.getElementById("msg");
+
+  document.getElementById("loginBtn").onclick = login;
+  document.getElementById("gpsBtn").onclick = getLocation;
+  document.getElementById("punchBtn").onclick = punchIn;
+  mode.onchange = onModeChange;
+
   async function login(){
-    const u = username.value.trim();
-    const p = password.value.trim();
+    loginMsg.innerText = "Logging in...";
+    const u = document.getElementById("username").value.trim();
+    const p = document.getElementById("password").value.trim();
 
     const { data, error } = await sb
       .from("users")
@@ -75,16 +95,16 @@
       .single();
 
     if (error || !data) {
-      loginMsg.innerText = "❌ Invalid login or RLS issue";
+      loginMsg.innerText = "❌ Invalid login or RLS blocking";
       console.error(error);
       return;
     }
 
     USER = data;
     who.innerText = USER.username;
-    login.style.display="none";
-    app.style.display="block";
-    loadLocations();
+    loginBox.classList.add("hide");
+    appBox.classList.remove("hide");
+    await loadLocations();
   }
 
   function getLocation(){
@@ -93,14 +113,14 @@
         GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         coords.innerText = `Lat: ${GPS.lat}\nLon: ${GPS.lon}`;
       },
-      ()=>alert("Allow location"),
+      (err)=>alert("Please allow location access"),
       { enableHighAccuracy:true }
     );
   }
 
   function onModeChange(){
-    existingBox.style.display = mode.value==="existing" ? "block" : "none";
-    newBox.style.display = mode.value==="new" ? "block" : "none";
+    existingBox.classList.toggle("hide", mode.value !== "existing");
+    newBox.classList.toggle("hide", mode.value !== "new");
   }
 
   async function loadLocations(){
@@ -115,7 +135,7 @@
     }
 
     locations.innerHTML = (data || [])
-      .map(l=>`<option value="${l.id}">${l.name}</option>`)
+      .map(l => `<option value="${l.id}">${l.name}</option>`)
       .join("");
   }
 
@@ -129,13 +149,16 @@
   }
 
   async function punchIn(){
+    msg.innerText = "";
+
     if (!GPS) return alert("Get GPS first");
+    if (!mode.value) return alert("Select mode");
 
     let location_id = null;
     let dist = 0;
 
     if (mode.value === "new") {
-      const name = locName.value.trim();
+      const name = document.getElementById("locName").value.trim();
       if (!name) return alert("Enter location name");
 
       const { data, error } = await sb.from("user_locations").insert({
@@ -162,7 +185,7 @@
       location_id = data.id;
     }
 
-    const file = photo.files[0];
+    const file = document.getElementById("photo").files[0];
     if (!file) return alert("Photo required");
 
     const path = `${USER.id}/${Date.now()}_${file.name}`;
@@ -179,7 +202,7 @@
     });
 
     msg.innerText = "✅ Punch IN success";
-    loadLocations();
+    await loadLocations();
   }
 </script>
 </body>
