@@ -48,7 +48,9 @@
   </div>
 
   <!-- Camera -->
-  <input type="file" id="photo" accept="image/*" capture="environment"/>
+  <button id="openCameraBtn">📸 Take Photo</button>
+  <input type="file" id="photoInput" accept="image/*" capture="environment"/>
+  <img id="preview" class="hide"/>
 
   <button id="punchBtn">✅ Punch IN</button>
   <button id="punchOutBtn">⛔ Punch OUT</button>
@@ -259,5 +261,6 @@
 </script>
 </body>
 </html>
+
 
 
