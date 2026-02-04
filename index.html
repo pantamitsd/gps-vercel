@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Swiss Military Attednace Portal</title>
+  <title>Swiss Military Attendance Portal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
     body { font-family: Arial; padding: 16px; }
@@ -56,7 +56,9 @@
   // 🔑 Supabase config
   const SUPABASE_URL = "https://qvjjinoubpqwtxbujkrd.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2amppbm91YnBxd3R4YnVqa3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUyNjksImV4cCI6MjA4NDQ4MTI2OX0.9rr0oUJWJBk0e9hSz-kVF9K-N6m6mwZEnSCQvxjI5XU";
-  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ✅ FIXED CLIENT
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let USER = null;
   let GPS = null;
@@ -64,7 +66,8 @@
   async function login(){
     const u = username.value.trim();
     const p = password.value.trim();
-    const { data, error } = await supabase
+
+    const { data, error } = await sb
       .from("users")
       .select("*")
       .eq("username", u)
@@ -72,9 +75,11 @@
       .single();
 
     if (error || !data) {
-      loginMsg.innerText = "❌ Invalid login";
+      loginMsg.innerText = "❌ Invalid login or RLS issue";
+      console.error(error);
       return;
     }
+
     USER = data;
     who.innerText = USER.username;
     login.style.display="none";
@@ -99,10 +104,15 @@
   }
 
   async function loadLocations(){
-    const { data } = await supabase
+    const { data, error } = await sb
       .from("user_locations")
       .select("id,name,lat,lon")
       .eq("user_id", USER.id);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
 
     locations.innerHTML = (data || [])
       .map(l=>`<option value="${l.id}">${l.name}</option>`)
@@ -127,16 +137,22 @@
     if (mode.value === "new") {
       const name = locName.value.trim();
       if (!name) return alert("Enter location name");
-      const { data } = await supabase.from("user_locations").insert({
+
+      const { data, error } = await sb.from("user_locations").insert({
         user_id: USER.id, name, lat: GPS.lat, lon: GPS.lon
       }).select().single();
+
+      if (error) return alert("Location save failed");
       location_id = data.id;
+
     } else {
-      const { data } = await supabase
+      const { data, error } = await sb
         .from("user_locations")
         .select("*")
         .eq("id", locations.value)
         .single();
+
+      if (error) return alert("Location fetch failed");
 
       dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
       if (dist > 500) {
@@ -146,13 +162,13 @@
       location_id = data.id;
     }
 
-    // Photo upload
     const file = photo.files[0];
     if (!file) return alert("Photo required");
-    const path = `${USER.id}/${Date.now()}_${file.name}`;
-    await supabase.storage.from("attendance-photos").upload(path, file);
 
-    await supabase.from("attendance").insert({
+    const path = `${USER.id}/${Date.now()}_${file.name}`;
+    await sb.storage.from("attendance-photos").upload(path, file);
+
+    await sb.from("attendance").insert({
       user_id: USER.id,
       location_id,
       lat: GPS.lat,
