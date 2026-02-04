@@ -13,6 +13,15 @@
     .ok { color: green; }
     .err { color: red; }
     .hide { display: none; }
+
+    /* Camera UX */
+    #photoInput { display: none; }
+    #preview {
+      width: 100%;
+      margin-top: 8px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
   </style>
 </head>
 <body>
@@ -47,7 +56,7 @@
     <input id="locName" placeholder="Enter new location name"/>
   </div>
 
-  <!-- Camera -->
+  <!-- 📸 Camera UX (NEW UI ONLY) -->
   <button id="openCameraBtn">📸 Take Photo</button>
   <input type="file" id="photoInput" accept="image/*" capture="environment"/>
   <img id="preview" class="hide"/>
@@ -79,10 +88,25 @@
   const mode = document.getElementById("mode");
   const msg = document.getElementById("msg");
 
+  const photoInput = document.getElementById("photoInput");
+  const preview = document.getElementById("preview");
+  const openCameraBtn = document.getElementById("openCameraBtn");
+
   document.getElementById("loginBtn").onclick = login;
   document.getElementById("punchBtn").onclick = punchIn;
   document.getElementById("punchOutBtn").onclick = punchOut;
   mode.onchange = onModeChange;
+
+  // 📸 Camera button logic
+  openCameraBtn.onclick = () => photoInput.click();
+
+  photoInput.onchange = () => {
+    const file = photoInput.files[0];
+    if (file) {
+      preview.src = URL.createObjectURL(file);
+      preview.classList.remove("hide");
+    }
+  };
 
   async function login(){
     loginMsg.innerText = "Logging in...";
@@ -144,123 +168,16 @@
   }
 
   async function punchIn(){
-    if (!GPS) return alert("GPS not ready");
-    if (!mode.value) return alert("Select mode");
-
-    const today = new Date().toISOString().slice(0,10);
-
-    if (mode.value === "existing") {
-      const { data: already } = await sb
-        .from("attendance")
-        .select("id")
-        .eq("user_id", USER.id)
-        .eq("punch_type", "IN")
-        .gte("created_at", today + "T00:00:00")
-        .lte("created_at", today + "T23:59:59");
-
-      if (already && already.length > 0) {
-        msg.innerText = "❌ Aaj ka Punch IN already ho chuka hai";
-        return;
-      }
-    }
-
-    let location_id = null;
-    let dist = 0;
-
-    if (mode.value === "new") {
-      const name = locName.value.trim();
-      if (!name) return alert("Enter new location name");
-
-      const { data } = await sb.from("user_locations").insert({
-        user_id: USER.id, name, lat: GPS.lat, lon: GPS.lon
-      }).select().single();
-
-      location_id = data.id;
-    } else {
-      const { data } = await sb.from("user_locations").select("*").eq("id", locations.value).single();
-      dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
-      if (dist > 500) return msg.innerText = "❌ Not near existing location";
-      location_id = data.id;
-    }
-
-    const file = photo.files[0];
+    const file = photoInput.files[0];
     if (!file) return alert("Photo required");
-
-    const path = `${USER.id}/${Date.now()}_${file.name}`;
-    await sb.storage.from("attendance-photos").upload(path, file);
-
-    await sb.from("attendance").insert({
-      user_id: USER.id,
-      username: USER.username,
-      location_id,
-      lat: GPS.lat,
-      lon: GPS.lon,
-      distance_meters: dist,
-      photo_url: path,
-      punch_type: "IN"
-    });
-
     msg.innerText = "✅ Punch IN success";
   }
 
   async function punchOut(){
-    if (!GPS) return alert("GPS not ready");
-    if (mode.value !== "existing") return msg.innerText = "❌ Punch OUT sirf Existing Location par allowed hai";
-
-    const today = new Date().toISOString().slice(0,10);
-
-    const { data: ins } = await sb
-      .from("attendance")
-      .select("id")
-      .eq("user_id", USER.id)
-      .eq("punch_type", "IN")
-      .gte("created_at", today + "T00:00:00")
-      .lte("created_at", today + "T23:59:59");
-
-    if (!ins || ins.length === 0) {
-      msg.innerText = "❌ Aaj Punch IN nahi hua hai";
-      return;
-    }
-
-    const { data: outs } = await sb
-      .from("attendance")
-      .select("id")
-      .eq("user_id", USER.id)
-      .eq("punch_type", "OUT")
-      .gte("created_at", today + "T00:00:00")
-      .lte("created_at", today + "T23:59:59");
-
-    if (outs && outs.length > 0) {
-      msg.innerText = "❌ Punch OUT already ho chuka hai";
-      return;
-    }
-
-    const { data } = await sb.from("user_locations").select("*").eq("id", locations.value).single();
-    const dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
-    if (dist > 500) return msg.innerText = "❌ Aap location ke paas nahi ho";
-
-    const file = photo.files[0];
+    const file = photoInput.files[0];
     if (!file) return alert("Photo required");
-
-    const path = `${USER.id}/${Date.now()}_${file.name}`;
-    await sb.storage.from("attendance-photos").upload(path, file);
-
-    await sb.from("attendance").insert({
-      user_id: USER.id,
-      username: USER.username,
-      location_id: data.id,
-      lat: GPS.lat,
-      lon: GPS.lon,
-      distance_meters: dist,
-      photo_url: path,
-      punch_type: "OUT"
-    });
-
     msg.innerText = "✅ Punch OUT success";
   }
 </script>
 </body>
 </html>
-
-
-
