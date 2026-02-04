@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>GPS Attendance</title>
+  <title>Swiss Military Attednace Portal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
     body { font-family: Arial; padding: 16px; }
@@ -14,7 +14,7 @@
 </head>
 <body>
 
-<h2>📍 GPS Attendance System</h2>
+<h2>📍 GPS Attendance (No Backend)</h2>
 
 <!-- LOGIN -->
 <div id="login">
@@ -51,70 +51,120 @@
   <p id="msg"></p>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const API = "https://YOUR_BACKEND_URL";   // FastAPI URL
-let TOKEN = null;
-let GPS = null;
-let USER_ID = null;
+  // 🔑 Supabase config
+  const SUPABASE_URL = "https://qvjjinoubpqwtxbujkrd.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2amppbm91YnBxd3R4YnVqa3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUyNjksImV4cCI6MjA4NDQ4MTI2OX0.9rr0oUJWJBk0e9hSz-kVF9K-N6m6mwZEnSCQvxjI5XU";
+  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-async function login(){
-  const r = await fetch(API+"/login", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ username: username.value, password: password.value })
-  });
-  const d = await r.json();
-  if (d.user_id){
-    USER_ID = d.user_id;
-    TOKEN = d.token;
-    who.innerText = username.value;
+  let USER = null;
+  let GPS = null;
+
+  async function login(){
+    const u = username.value.trim();
+    const p = password.value.trim();
+    const { data, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("username", u)
+      .eq("password", p)
+      .single();
+
+    if (error || !data) {
+      loginMsg.innerText = "❌ Invalid login";
+      return;
+    }
+    USER = data;
+    who.innerText = USER.username;
     login.style.display="none";
     app.style.display="block";
     loadLocations();
-  } else {
-    loginMsg.innerText = "❌ Invalid login";
   }
-}
 
-function getLocation(){
-  navigator.geolocation.getCurrentPosition(
-    (pos)=>{
-      GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      coords.innerText = `Lat: ${GPS.lat}\nLon: ${GPS.lon}`;
-    },
-    ()=>alert("Allow location"),
-    { enableHighAccuracy:true }
-  );
-}
+  function getLocation(){
+    navigator.geolocation.getCurrentPosition(
+      (pos)=>{
+        GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        coords.innerText = `Lat: ${GPS.lat}\nLon: ${GPS.lon}`;
+      },
+      ()=>alert("Allow location"),
+      { enableHighAccuracy:true }
+    );
+  }
 
-function onModeChange(){
-  existingBox.style.display = mode.value==="existing" ? "block" : "none";
-  newBox.style.display = mode.value==="new" ? "block" : "none";
-}
+  function onModeChange(){
+    existingBox.style.display = mode.value==="existing" ? "block" : "none";
+    newBox.style.display = mode.value==="new" ? "block" : "none";
+  }
 
-async function loadLocations(){
-  const r = await fetch(API+`/locations?user_id=${USER_ID}`);
-  const list = await r.json();
-  locations.innerHTML = list.map(l=>`<option value="${l.id}">${l.name}</option>`).join("");
-}
+  async function loadLocations(){
+    const { data } = await supabase
+      .from("user_locations")
+      .select("id,name,lat,lon")
+      .eq("user_id", USER.id);
 
-async function punchIn(){
-  if (!GPS) return alert("Get GPS first");
-  const photoFile = photo.files[0];
-  const form = new FormData();
-  form.append("user_id", USER_ID);
-  form.append("lat", GPS.lat);
-  form.append("lon", GPS.lon);
-  form.append("mode", mode.value);
-  form.append("location_id", locations.value || "");
-  form.append("location_name", locName.value || "");
-  form.append("photo", photoFile);
+    locations.innerHTML = (data || [])
+      .map(l=>`<option value="${l.id}">${l.name}</option>`)
+      .join("");
+  }
 
-  const r = await fetch(API+"/punch-in", { method:"POST", body: form });
-  const d = await r.json();
-  msg.innerText = d.ok ? "✅ Punch IN Success" : "❌ " + d.error;
-}
+  function haversine(lat1, lon1, lat2, lon2){
+    const R=6371000;
+    const dlat=(lat2-lat1)*Math.PI/180;
+    const dlon=(lon2-lon1)*Math.PI/180;
+    const a=Math.sin(dlat/2)**2 +
+      Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dlon/2)**2;
+    return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  async function punchIn(){
+    if (!GPS) return alert("Get GPS first");
+
+    let location_id = null;
+    let dist = 0;
+
+    if (mode.value === "new") {
+      const name = locName.value.trim();
+      if (!name) return alert("Enter location name");
+      const { data } = await supabase.from("user_locations").insert({
+        user_id: USER.id, name, lat: GPS.lat, lon: GPS.lon
+      }).select().single();
+      location_id = data.id;
+    } else {
+      const { data } = await supabase
+        .from("user_locations")
+        .select("*")
+        .eq("id", locations.value)
+        .single();
+
+      dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
+      if (dist > 500) {
+        msg.innerText = "❌ Not near existing location";
+        return;
+      }
+      location_id = data.id;
+    }
+
+    // Photo upload
+    const file = photo.files[0];
+    if (!file) return alert("Photo required");
+    const path = `${USER.id}/${Date.now()}_${file.name}`;
+    await supabase.storage.from("attendance-photos").upload(path, file);
+
+    await supabase.from("attendance").insert({
+      user_id: USER.id,
+      location_id,
+      lat: GPS.lat,
+      lon: GPS.lon,
+      distance_meters: dist,
+      photo_url: path,
+      punch_type: "IN"
+    });
+
+    msg.innerText = "✅ Punch IN success";
+    loadLocations();
+  }
 </script>
-
 </body>
 </html>
