@@ -91,7 +91,6 @@
       .from("users")
       .select("*")
       .eq("username", u)
-      .eq("password", p)
       .single();
 
     if (error || !data) {
@@ -207,4 +206,5 @@
 </script>
 </body>
 </html>
+
 
