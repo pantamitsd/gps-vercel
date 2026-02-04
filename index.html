@@ -84,21 +84,26 @@
 
   async function login(){
     loginMsg.innerText = "Logging in...";
-    const u = document.getElementById("username").value.trim();
+    const u = document.getElementById("username").value.trim().toLowerCase();
     const p = document.getElementById("password").value.trim();
-
+  
     const { data, error } = await sb
       .from("users")
       .select("*")
-      .eq("username", u)
+      .ilike("username", u)   // case-insensitive username match
       .single();
-
+  
     if (error || !data) {
-      loginMsg.innerText = "❌ Invalid login or RLS blocking";
+      loginMsg.innerText = "❌ User not found";
       console.error(error);
       return;
     }
-
+  
+    if (data.password !== p) {
+      loginMsg.innerText = "❌ Wrong password";
+      return;
+    }
+  
     USER = data;
     who.innerText = USER.username;
     loginBox.classList.add("hide");
@@ -206,5 +211,6 @@
 </script>
 </body>
 </html>
+
 
 
