@@ -40,34 +40,19 @@
 <div id="adminBox" class="hide">
   <h3>🛠 Admin Dashboard</h3>
 
-  <select id="dateFilter">
-    <option value="today">Today</option>
-    <option value="yesterday">Yesterday</option>
-    <option value="7days">Last 7 Days</option>
-    <option value="custom">Custom Range</option>
-  </select>
-
-  <div id="customDates" class="hide">
-    <input type="date" id="startDate"/>
-    <input type="date" id="endDate"/>
-    <button onclick="loadAdminData()">Apply</button>
-  </div>
-
   <div class="tabs">
     <button onclick="showTab('table')">📊 Attendance Table</button>
     <button onclick="showTab('photos')">📸 Attendance Photos</button>
-    <button onclick="showTab('remarks')">📝 Movement / Expense Remarks</button>
   </div>
 
   <div id="tabTable"></div>
   <div id="tabPhotos" class="hide"></div>
-  <div id="tabRemarks" class="hide"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SUPABASE_URL = "https://qvjjinoubpqwtxbujkrd.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2amppbm91YnBxd3R4YnVqa3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUyNjksImV4cCI6MjA4NDQ4MTI2OX0.9rr0oUJWJBk0e9hSz-kVF9K-N6m6mwZEnSCQvxjI5XU";   // apna anon key yahan rakho
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2amppbm91YnBxd3R4YnVqa3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUyNjksImV4cCI6MjA4NDQ4MTI2OX0.9rr0oUJWJBk0e9hSz-kVF9K-N6m6mwZEnSCQvxjI5XU";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let USER=null;
@@ -76,26 +61,13 @@ loginBtn.onclick = async ()=>{
   const u = username.value.trim().toLowerCase();
   const p = password.value.trim();
 
-  const { data, error } = await sb
-    .from("users")
-    .select("*")
-    .ilike("username", u)
-    .single();
-
-  if (error || !data) {
-    loginMsg.innerText="❌ User not found";
-    return;
-  }
-
-  if (data.password !== p) {
-    loginMsg.innerText="❌ Wrong password";
-    return;
-  }
+  const { data, error } = await sb.from("users").select("*").ilike("username", u).single();
+  if (error || !data) return loginMsg.innerText="❌ User not found";
+  if (data.password !== p) return loginMsg.innerText="❌ Wrong password";
 
   USER=data;
   loginBox.classList.add("hide");
 
-  // ✅ ROLE BASED ADMIN CHECK (YAHI CHANGE HAI)
   if (USER.role === "admin") {
     adminBox.classList.remove("hide");
     loadAdminData();
@@ -108,19 +80,16 @@ loginBtn.onclick = async ()=>{
 function showTab(tab){
   tabTable.classList.add("hide");
   tabPhotos.classList.add("hide");
-  tabRemarks.classList.add("hide");
   document.getElementById("tab"+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.remove("hide");
 }
 
 async function loadAdminData(){
-  let q = sb.from("attendance").select("*").order("created_at", { ascending:false });
-
-  const { data } = await q;
+  const { data } = await sb.from("attendance").select("*").order("created_at", { ascending:false });
 
   // TABLE
   let html = "<table><tr><th>User</th><th>Date</th><th>Time</th><th>Type</th><th>Location</th></tr>";
   (data||[]).forEach(r=>{
-    html += `<tr><td>${r.username}</td><td>${r.punch_date}</td><td>${r.punch_time}</td><td>${r.punch_type}</td><td>${r.location_name||""}</td></tr>`;
+    html += `<tr><td>${r.username}</td><td>${r.punch_date||""}</td><td>${r.punch_time||""}</td><td>${r.punch_type}</td><td>${r.location_name||""}</td></tr>`;
   });
   html += "</table>";
   tabTable.innerHTML = html;
@@ -130,21 +99,11 @@ async function loadAdminData(){
   (data||[]).forEach(r=>{
     if(r.photo_url){
       const { data:urlData } = sb.storage.from("attendance-photos").getPublicUrl(r.photo_url);
-      phtml += `<img src="${urlData.publicUrl}" width="140"/><div>${r.username} - ${r.punch_type}</div>`;
+      phtml += `<div><img src="${urlData.publicUrl}" width="140"/><br/>${r.username} - ${r.punch_type}</div>`;
     }
   });
   tabPhotos.innerHTML = phtml;
-
-  // REMARKS
-  const { data:remarks } = await sb.from("attendance_remarks").select("*").order("created_at", { ascending:false });
-  let rhtml = "<table><tr><th>User</th><th>Date</th><th>Time</th><th>Remark</th></tr>";
-  (remarks||[]).forEach(r=>{
-    rhtml += `<tr><td>${r.user_name}</td><td>${r.date}</td><td>${r.time}</td><td>${r.remark}</td></tr>`;
-  });
-  rhtml += "</table>";
-  tabRemarks.innerHTML = rhtml;
 }
 </script>
 </body>
 </html>
-
