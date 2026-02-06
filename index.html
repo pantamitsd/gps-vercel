@@ -6,11 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
     body { font-family: Arial, sans-serif; padding: 16px; max-width: 520px; margin: auto; }
-    input, select, button { width: 100%; padding: 10px; margin: 6px 0; }
+    input, button { width: 100%; padding: 10px; margin: 6px 0; }
     pre { background:#f5f5f5; padding:10px; white-space: pre-wrap; }
     .hide { display:none; }
     #photoInput { display:none; }
     #preview { width:100%; margin-top:8px; border-radius:8px; border:1px solid #ddd; }
+    .loc-chip { background:#eef; padding:8px 10px; border-radius:8px; margin:6px 0; }
   </style>
 </head>
 <body>
@@ -27,20 +28,7 @@
 <div id="appBox" class="hide">
   <p>Welcome, <b id="who"></b></p>
   <pre id="coords">Fetching GPS...</pre>
-
-  <select id="mode">
-    <option value="">Select Option</option>
-    <option value="existing">Existing Location</option>
-    <option value="new">New Location</option>
-  </select>
-
-  <div id="existingBox" class="hide">
-    <select id="locations"></select>
-  </div>
-
-  <div id="newBox" class="hide">
-    <input id="locName" placeholder="Enter new location name"/>
-  </div>
+  <div id="nearLoc" class="loc-chip">Detecting nearest location...</div>
 
   <!-- 📸 Camera UI -->
   <button id="openCameraBtn">📸 Take Photo</button>
@@ -58,17 +46,14 @@ const SUPABASE_URL = "https://qvjjinoubpqwtxbujkrd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2amppbm91YnBxd3R4YnVqa3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MDUyNjksImV4cCI6MjA4NDQ4MTI2OX0.9rr0oUJWJBk0e9hSz-kVF9K-N6m6mwZEnSCQvxjI5XU";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let USER=null, GPS=null;
+let USER=null, GPS=null, ALL_LOCATIONS=[], NEAREST=null;
 
 const loginBox = document.getElementById("loginBox");
 const appBox = document.getElementById("appBox");
 const loginMsg = document.getElementById("loginMsg");
 const who = document.getElementById("who");
 const coords = document.getElementById("coords");
-const locations = document.getElementById("locations");
-const existingBox = document.getElementById("existingBox");
-const newBox = document.getElementById("newBox");
-const mode = document.getElementById("mode");
+const nearLoc = document.getElementById("nearLoc");
 const msg = document.getElementById("msg");
 const photoInput = document.getElementById("photoInput");
 const preview = document.getElementById("preview");
@@ -77,9 +62,7 @@ const openCameraBtn = document.getElementById("openCameraBtn");
 loginBtn.onclick = login;
 punchBtn.onclick = punchIn;
 punchOutBtn.onclick = punchOut;
-mode.onchange = onModeChange;
 
-// 📸 camera UX
 openCameraBtn.onclick = ()=> photoInput.click();
 photoInput.onchange = ()=>{
   const f = photoInput.files[0];
@@ -102,8 +85,15 @@ async function login(){
   who.innerText = USER.username;
   loginBox.classList.add("hide");
   appBox.classList.remove("hide");
+
+  await loadLocations();
   getLocation();
-  loadLocations();
+}
+
+async function loadLocations(){
+  const { data, error } = await sb.from("locations_master").select("id,name,lat,lon");
+  if (error) return msg.innerText = "❌ Locations load failed";
+  ALL_LOCATIONS = data || [];
 }
 
 function getLocation(){
@@ -111,30 +101,11 @@ function getLocation(){
     (pos)=>{
       GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       coords.innerText = `Lat: ${GPS.lat}\nLon: ${GPS.lon}`;
+      detectNearestLocation();
     },
     ()=>coords.innerText = "❌ Location permission denied",
     { enableHighAccuracy:true }
   );
-}
-
-function onModeChange(){
-  existingBox.classList.toggle("hide", mode.value !== "existing");
-  newBox.classList.toggle("hide", mode.value !== "new");
-}
-
-async function loadLocations(){
-  const { data, error } = await sb
-    .from("locations_master")
-    .select("id,name");
-
-  if (error) {
-    msg.innerText = "❌ Locations load nahi hui";
-    return;
-  }
-
-  locations.innerHTML = (data || [])
-    .map(l => `<option value="${l.id}">${l.name}</option>`)
-    .join("");
 }
 
 function haversine(lat1, lon1, lat2, lon2){
@@ -146,47 +117,47 @@ function haversine(lat1, lon1, lat2, lon2){
   return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+function detectNearestLocation(){
+  if (!GPS || ALL_LOCATIONS.length === 0) return;
+
+  let nearest = null;
+  let minDist = Infinity;
+
+  ALL_LOCATIONS.forEach(loc=>{
+    const d = haversine(GPS.lat, GPS.lon, loc.lat, loc.lon);
+    if (d < minDist) {
+      minDist = d;
+      nearest = loc;
+    }
+  });
+
+  if (nearest && minDist <= 500) {
+    NEAREST = nearest;
+    nearLoc.innerText = `📌 Near Location: ${nearest.name} (${Math.round(minDist)} m)`;
+  } else {
+    NEAREST = null;
+    nearLoc.innerText = `📌 Near Location: None (Not within 500m of any DB location)`;
+  }
+}
+
 async function punchIn(){
   if (!GPS) return alert("GPS not ready");
-  if (!mode.value) return alert("Select mode");
+  if (!NEAREST) return msg.innerText = "❌ Aap kisi DB location ke paas nahi ho";
 
   const today = new Date().toISOString().slice(0,10);
 
-  if (mode.value === "existing" && locations.value) {
-    const { data: already } = await sb
-      .from("attendance")
-      .select("id")
-      .eq("user_id", USER.id)
-      .eq("punch_type", "IN")
-      .eq("location_id", locations.value)
-      .gte("created_at", today + "T00:00:00")
-      .lte("created_at", today + "T23:59:59");
+  const { data: already } = await sb
+    .from("attendance")
+    .select("id")
+    .eq("user_id", USER.id)
+    .eq("punch_type", "IN")
+    .eq("location_id", NEAREST.id)
+    .gte("created_at", today + "T00:00:00")
+    .lte("created_at", today + "T23:59:59");
 
-    if (already && already.length > 0) {
-      msg.innerText = "❌ Aap is location par aaj Punch IN kar chuke ho";
-      return;
-    }
-  }
-
-  let location_id = null, dist = 0;
-
-  if (mode.value === "new") {
-    const name = locName.value.trim();
-    if (!name) return alert("Enter new location name");
-
-    alert("New location add abhi disabled hai. Location admin se add hogi.");
+  if (already && already.length > 0) {
+    msg.innerText = "❌ Aap is location par aaj Punch IN kar chuke ho";
     return;
-
-  } else {
-    const { data } = await sb
-      .from("locations_master")
-      .select("*")
-      .eq("id", locations.value)
-      .single();
-
-    dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
-    if (dist > 500) return msg.innerText = "❌ Not near existing location";
-    location_id = data.id;
   }
 
   const file = photoInput.files[0];
@@ -198,10 +169,10 @@ async function punchIn(){
   await sb.from("attendance").insert({
     user_id: USER.id,
     username: USER.username,
-    location_id,
+    location_id: NEAREST.id,
     lat: GPS.lat,
     lon: GPS.lon,
-    distance_meters: dist,
+    distance_meters: haversine(GPS.lat, GPS.lon, NEAREST.lat, NEAREST.lon),
     photo_url: path,
     punch_type: "IN"
   });
@@ -211,16 +182,7 @@ async function punchIn(){
 
 async function punchOut(){
   if (!GPS) return alert("GPS not ready");
-  if (!locations.value) return msg.innerText = "❌ Select location for Punch OUT";
-
-  const { data } = await sb
-    .from("locations_master")
-    .select("*")
-    .eq("id", locations.value)
-    .single();
-
-  const dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
-  if (dist > 500) return msg.innerText = "❌ Aap selected location ke paas nahi ho";
+  if (!NEAREST) return msg.innerText = "❌ Aap kisi DB location ke paas nahi ho";
 
   const file = photoInput.files[0];
   if (!file) return alert("Photo required");
@@ -231,10 +193,10 @@ async function punchOut(){
   await sb.from("attendance").insert({
     user_id: USER.id,
     username: USER.username,
-    location_id: data.id,
+    location_id: NEAREST.id,
     lat: GPS.lat,
     lon: GPS.lon,
-    distance_meters: dist,
+    distance_meters: haversine(GPS.lat, GPS.lon, NEAREST.lat, NEAREST.lon),
     photo_url: path,
     punch_type: "OUT"
   });
