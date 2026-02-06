@@ -92,7 +92,6 @@ async function login(){
   const u = username.value.trim().toLowerCase();
   const p = password.value.trim();
 
-  // 🔐 Admin login
   if (u === ADMIN_USER && p === ADMIN_PASS) {
     loginBox.classList.add("hide");
     adminBox.classList.remove("hide");
@@ -100,7 +99,6 @@ async function login(){
     return;
   }
 
-  // 👤 Normal user login
   const { data, error } = await sb.from("users").select("*").ilike("username", u).single();
   if (error || !data) return loginMsg.innerText = "❌ User not found";
   if (data.password !== p) return loginMsg.innerText = "❌ Wrong password";
@@ -116,23 +114,13 @@ async function login(){
 
 async function loadAdminAttendance(){
   const { data } = await sb.from("attendance").select("*").order("created_at", { ascending:false });
-
   let html = "<table><tr><th>User</th><th>Date</th><th>Time</th><th>Type</th><th>Location</th></tr>";
   (data||[]).forEach(r=>{
-    html += `<tr>
-      <td>${r.username}</td>
-      <td>${r.punch_date || ""}</td>
-      <td>${r.punch_time || ""}</td>
-      <td>${r.punch_type}</td>
-      <td>${r.location_name || ""}</td>
-    </tr>`;
+    html += `<tr><td>${r.username}</td><td>${r.punch_date||""}</td><td>${r.punch_time||""}</td><td>${r.punch_type}</td><td>${r.location_name||""}</td></tr>`;
   });
   html += "</table>";
-
   adminTable.innerHTML = html;
 }
-
-// ====== TERA ORIGINAL USER CODE ======
 
 async function loadLocations(){
   const { data } = await sb.from("locations_master").select("id,name,lat,lon");
@@ -140,13 +128,11 @@ async function loadLocations(){
 }
 
 function getLocation(){
-  navigator.geolocation.getCurrentPosition(
-    (pos)=>{
-      GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      coords.innerText = `Lat: ${GPS.lat}\nLon: ${GPS.lon}`;
-      detectNearestLocation();
-    }
-  );
+  navigator.geolocation.getCurrentPosition((pos)=>{
+    GPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    coords.innerText = `Lat: ${GPS.lat}\nLon: ${GPS.lon}`;
+    detectNearestLocation();
+  });
 }
 
 function haversine(lat1, lon1, lat2, lon2){
@@ -159,28 +145,75 @@ function haversine(lat1, lon1, lat2, lon2){
 }
 
 function detectNearestLocation(){
-  if (!GPS || ALL_LOCATIONS.length === 0) return;
-
-  let nearest = null;
-  let minDist = Infinity;
-
+  let nearest=null, minDist=Infinity;
   ALL_LOCATIONS.forEach(loc=>{
     const d = haversine(GPS.lat, GPS.lon, loc.lat, loc.lon);
-    if (d < minDist) { minDist = d; nearest = loc; }
+    if (d < minDist) { minDist=d; nearest=loc; }
   });
-
   if (nearest && minDist <= 500) {
     NEAREST = nearest;
     nearLoc.innerText = `📌 Near Location: ${nearest.name} (${Math.round(minDist)} m)`;
   } else {
-    NEAREST = null;
-    nearLoc.innerText = `📌 Near Location: None`;
+    NEAREST=null;
+    nearLoc.innerText = "📌 Near Location: None";
   }
 }
 
-// ⚠️ yahan tera punchIn / punchOut original hi rahega
-async function punchIn(){}
-async function punchOut(){}
+async function punchIn(){
+  if (!GPS || !NEAREST) return msg.innerText="❌ Location not valid";
+  const file = photoInput.files[0];
+  if (!file) return alert("Photo required");
+
+  const path = `${USER.id}/${Date.now()}_${file.name}`;
+  await sb.storage.from("attendance-photos").upload(path, file);
+
+  const now = new Date();
+  const date = now.toLocaleDateString("en-CA");
+  const time = now.toLocaleTimeString("en-GB",{hour12:false});
+
+  await sb.from("attendance").insert({
+    user_id: USER.id,
+    username: USER.username,
+    punch_type: "IN",
+    location_id: NEAREST.id,
+    location_name: NEAREST.name,
+    lat: GPS.lat,
+    lon: GPS.lon,
+    photo_url: path,
+    punch_date: date,
+    punch_time: time
+  });
+
+  msg.innerText="✅ Punch IN success";
+}
+
+async function punchOut(){
+  if (!GPS || !NEAREST) return msg.innerText="❌ Location not valid";
+  const file = photoInput.files[0];
+  if (!file) return alert("Photo required");
+
+  const path = `${USER.id}/${Date.now()}_${file.name}`;
+  await sb.storage.from("attendance-photos").upload(path, file);
+
+  const now = new Date();
+  const date = now.toLocaleDateString("en-CA");
+  const time = now.toLocaleTimeString("en-GB",{hour12:false});
+
+  await sb.from("attendance").insert({
+    user_id: USER.id,
+    username: USER.username,
+    punch_type: "OUT",
+    location_id: NEAREST.id,
+    location_name: NEAREST.name,
+    lat: GPS.lat,
+    lon: GPS.lon,
+    photo_url: path,
+    punch_date: date,
+    punch_time: time
+  });
+
+  msg.innerText="✅ Punch OUT success";
+}
 </script>
 </body>
 </html>
