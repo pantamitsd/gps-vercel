@@ -218,6 +218,22 @@ async function punchIn(){
   const file = photoInput.files[0];
   if (!file) return alert("Photo required");
 
+  const today = new Date().toLocaleDateString("en-CA");
+
+  // ❌ Check: aaj is location par already IN hua hai kya?
+  const { data: alreadyIn } = await sb
+    .from("attendance")
+    .select("id")
+    .eq("user_id", USER.id)
+    .eq("punch_type", "IN")
+    .eq("location_id", NEAREST.id)
+    .eq("punch_date", today);
+
+  if (alreadyIn && alreadyIn.length > 0) {
+    msg.innerText = "❌ Aap aaj is location par Punch IN already kar chuke ho";
+    return;
+  }
+
   const path = `${USER.id}/${Date.now()}_${file.name}`;
   await sb.storage.from("attendance-photos").upload(path, file);
 
@@ -240,6 +256,7 @@ async function punchIn(){
 
   msg.innerText="✅ Punch IN success";
 }
+
 
 async function punchOut(){
   if (!GPS || !NEAREST) return msg.innerText="❌ Location not valid";
@@ -271,3 +288,4 @@ async function punchOut(){
 </script>
 </body>
 </html>
+
