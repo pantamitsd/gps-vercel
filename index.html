@@ -30,7 +30,6 @@
   <pre id="coords">Fetching GPS...</pre>
   <div id="nearLoc" class="loc-chip">Detecting nearest location...</div>
 
-  <!-- 📸 Camera UI -->
   <button id="openCameraBtn">📸 Take Photo</button>
   <input type="file" id="photoInput" accept="image/*" capture="environment"/>
   <img id="preview" class="hide"/>
@@ -71,6 +70,13 @@ photoInput.onchange = ()=>{
     preview.classList.remove("hide");
   }
 };
+
+function getISTDateTime(){
+  const now = new Date();
+  const date = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
+  const time = now.toLocaleTimeString("en-GB", { hour12: false }); // HH:MM:SS
+  return { date, time };
+}
 
 async function login(){
   loginMsg.innerText = "Logging in...";
@@ -166,15 +172,20 @@ async function punchIn(){
   const path = `${USER.id}/${Date.now()}_${file.name}`;
   await sb.storage.from("attendance-photos").upload(path, file);
 
+  const { date, time } = getISTDateTime();
+
   await sb.from("attendance").insert({
     user_id: USER.id,
     username: USER.username,
+    punch_type: "IN",
     location_id: NEAREST.id,
+    location_name: NEAREST.name,
     lat: GPS.lat,
     lon: GPS.lon,
     distance_meters: haversine(GPS.lat, GPS.lon, NEAREST.lat, NEAREST.lon),
     photo_url: path,
-    punch_type: "IN"
+    punch_date: date,
+    punch_time: time
   });
 
   msg.innerText = "✅ Punch IN success";
@@ -190,15 +201,20 @@ async function punchOut(){
   const path = `${USER.id}/${Date.now()}_${file.name}`;
   await sb.storage.from("attendance-photos").upload(path, file);
 
+  const { date, time } = getISTDateTime();
+
   await sb.from("attendance").insert({
     user_id: USER.id,
     username: USER.username,
+    punch_type: "OUT",
     location_id: NEAREST.id,
+    location_name: NEAREST.name,
     lat: GPS.lat,
     lon: GPS.lon,
     distance_meters: haversine(GPS.lat, GPS.lon, NEAREST.lat, NEAREST.lon),
     photo_url: path,
-    punch_type: "OUT"
+    punch_date: date,
+    punch_time: time
   });
 
   msg.innerText = "✅ Punch OUT success";
