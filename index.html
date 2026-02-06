@@ -123,21 +123,16 @@ function onModeChange(){
 }
 
 async function loadLocations(){
-  const { data } = await sb
-    .from("user_locations")
-    .select("id,name")
-    .eq("user_id", USER.id);
+  const { data, error } = await sb
+    .from("locations_master")
+    .select("id,name");
 
-  // UI-level de-dup by name
-  const uniqueByName = {};
-  (data || []).forEach(l => {
-    if (!uniqueByName[l.name.toLowerCase()]) {
-      uniqueByName[l.name.toLowerCase()] = l;
-    }
-  });
-  const uniqueLocations = Object.values(uniqueByName);
+  if (error) {
+    msg.innerText = "❌ Locations load nahi hui";
+    return;
+  }
 
-  locations.innerHTML = uniqueLocations
+  locations.innerHTML = (data || [])
     .map(l => `<option value="${l.id}">${l.name}</option>`)
     .join("");
 }
@@ -157,7 +152,6 @@ async function punchIn(){
 
   const today = new Date().toISOString().slice(0,10);
 
-  // 🔒 Duplicate Punch IN (same day + same location)
   if (mode.value === "existing" && locations.value) {
     const { data: already } = await sb
       .from("attendance")
@@ -180,27 +174,12 @@ async function punchIn(){
     const name = locName.value.trim();
     if (!name) return alert("Enter new location name");
 
-    // 🔒 Duplicate Location (same user + same name)
-    const { data: existingLoc } = await sb
-      .from("user_locations")
-      .select("id")
-      .eq("user_id", USER.id)
-      .ilike("name", name);
-
-    if (existingLoc && existingLoc.length > 0) {
-      msg.innerText = "❌ Ye location pehle se added hai. Existing Location select karo.";
-      return;
-    }
-
-    const { data } = await sb.from("user_locations").insert({
-      user_id: USER.id, name, lat: GPS.lat, lon: GPS.lon
-    }).select().single();
-
-    location_id = data.id;
+    alert("New location add abhi disabled hai. Location admin se add hogi.");
+    return;
 
   } else {
     const { data } = await sb
-      .from("user_locations")
+      .from("locations_master")
       .select("*")
       .eq("id", locations.value)
       .single();
@@ -232,10 +211,16 @@ async function punchIn(){
 
 async function punchOut(){
   if (!GPS) return alert("GPS not ready");
+  if (!locations.value) return msg.innerText = "❌ Select location for Punch OUT";
 
-  const { data } = await sb.from("user_locations").select("*").eq("id", locations.value).single();
+  const { data } = await sb
+    .from("locations_master")
+    .select("*")
+    .eq("id", locations.value)
+    .single();
+
   const dist = haversine(GPS.lat, GPS.lon, data.lat, data.lon);
-  if (dist > 500) return msg.innerText = "❌ Aap location ke paas nahi ho";
+  if (dist > 500) return msg.innerText = "❌ Aap selected location ke paas nahi ho";
 
   const file = photoInput.files[0];
   if (!file) return alert("Photo required");
