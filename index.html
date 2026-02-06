@@ -5,23 +5,105 @@
   <title>Swiss Military Attendance</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
-    body { font-family: Arial, sans-serif; padding: 16px; max-width: 900px; margin: auto; }
-    input, button, select { width: 100%; padding: 10px; margin: 6px 0; }
-    pre { background:#f5f5f5; padding:10px; white-space: pre-wrap; }
+    body {
+      font-family: Arial, sans-serif;
+      padding: 16px;
+      max-width: 900px;
+      margin: auto;
+      background: #f7f9fc;
+    }
+
+    h2 { text-align: center; }
+
+    .card {
+      background: #fff;
+      padding: 16px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      margin-bottom: 16px;
+    }
+
+    input, button, select {
+      width: 100%;
+      padding: 10px;
+      margin: 6px 0;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      font-size: 14px;
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    button:hover { opacity: 0.9; }
+
+    .btn-danger { background: #dc2626; }
+
+    pre {
+      background:#f5f5f5;
+      padding:10px;
+      white-space: pre-wrap;
+      border-radius: 6px;
+    }
+
     .hide { display:none; }
+
     #photoInput { display:none; }
-    #preview { width:100%; margin-top:8px; border-radius:8px; border:1px solid #ddd; }
-    .loc-chip { background:#eef; padding:8px 10px; border-radius:8px; margin:6px 0; }
-    table { width:100%; border-collapse: collapse; margin-top:10px; }
-    th, td { border:1px solid #ddd; padding:6px; font-size:13px; }
-    th { background:#f5f5f5; }
+
+    #preview {
+      width:100%;
+      margin-top:8px;
+      border-radius:8px;
+      border:1px solid #ddd;
+    }
+
+    .loc-chip {
+      background:#eef;
+      padding:8px 10px;
+      border-radius:8px;
+      margin:6px 0;
+      font-weight: 600;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .row button { width: 50%; }
+
+    table {
+      width:100%;
+      border-collapse: collapse;
+      margin-top:10px;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      border:1px solid #eee;
+      padding:8px;
+      font-size:13px;
+      text-align: left;
+    }
+
+    th { background:#f1f5f9; }
+
+    #loginMsg, #msg { font-weight: 600; }
   </style>
 </head>
 <body>
 
 <h2>📍Swiss Military Attendance Portal</h2>
 
-<div id="loginBox">
+<div id="loginBox" class="card">
+  <h3>🔐 Login</h3>
   <input id="username" placeholder="Username"/>
   <input id="password" type="password" placeholder="Password"/>
   <button id="loginBtn">Login</button>
@@ -29,7 +111,7 @@
 </div>
 
 <!-- USER PORTAL -->
-<div id="appBox" class="hide">
+<div id="appBox" class="hide card">
   <p>Welcome, <b id="who"></b></p>
   <pre id="coords">Fetching GPS...</pre>
   <div id="nearLoc" class="loc-chip">Detecting nearest location...</div>
@@ -38,13 +120,16 @@
   <input type="file" id="photoInput" accept="image/*" capture="environment"/>
   <img id="preview" class="hide"/>
 
-  <button id="punchBtn">✅ Punch IN</button>
-  <button id="punchOutBtn">⛔ Punch OUT</button>
+  <div class="row">
+    <button id="punchBtn">✅ Punch IN</button>
+    <button id="punchOutBtn" class="btn-danger">⛔ Punch OUT</button>
+  </div>
+
   <p id="msg"></p>
 </div>
 
 <!-- ADMIN PANEL -->
-<div id="adminBox" class="hide">
+<div id="adminBox" class="hide card">
   <h3>🛠 Admin Dashboard – Attendance Table</h3>
 
   <select id="filterType">
@@ -58,8 +143,10 @@
     <input type="date" id="endDate"/>
   </div>
 
-  <button onclick="loadAdminAttendance()">🔍 Filter</button>
-  <button onclick="exportExcel()">⬇️ Download Excel</button>
+  <div class="row">
+    <button onclick="loadAdminAttendance()">🔍 Filter</button>
+    <button onclick="exportExcel()">⬇️ Download Excel</button>
+  </div>
 
   <div id="adminTable"></div>
 </div>
@@ -174,7 +261,7 @@ function exportExcel(){
   a.click();
 }
 
-/* ==== TERA ORIGINAL USER CODE AS IT IS ==== */
+/* ==== TERA ORIGINAL USER LOGIC AS IT IS ==== */
 
 async function loadLocations(){
   const { data } = await sb.from("locations_master").select("id,name,lat,lon");
@@ -220,7 +307,6 @@ async function punchIn(){
 
   const today = new Date().toLocaleDateString("en-CA");
 
-  // ❌ Check: aaj is location par already IN hua hai kya?
   const { data: alreadyIn } = await sb
     .from("attendance")
     .select("id")
@@ -257,7 +343,6 @@ async function punchIn(){
   msg.innerText="✅ Punch IN success";
 }
 
-
 async function punchOut(){
   if (!GPS || !NEAREST) return msg.innerText="❌ Location not valid";
   const file = photoInput.files[0];
@@ -288,4 +373,3 @@ async function punchOut(){
 </script>
 </body>
 </html>
-
