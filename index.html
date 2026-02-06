@@ -27,7 +27,6 @@
 </div>
 
 <div id="userBox" class="hide">
-  <!-- 🔒 USER PORTAL (unchanged logic) -->
   <p>Welcome, <b id="who"></b></p>
   <pre id="coords">Fetching GPS...</pre>
   <div id="nearLoc"></div>
@@ -68,7 +67,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SUPABASE_URL = "https://qvjjinoubpqwtxbujkrd.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR_KEY";
+const SUPABASE_ANON_KEY = "YOUR_KEY";   // apna anon key yahan rakho
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let USER=null;
@@ -77,13 +76,27 @@ loginBtn.onclick = async ()=>{
   const u = username.value.trim().toLowerCase();
   const p = password.value.trim();
 
-  const { data } = await sb.from("users").select("*").ilike("username", u).single();
-  if (!data || data.password !== p) return loginMsg.innerText="❌ Wrong login";
+  const { data, error } = await sb
+    .from("users")
+    .select("*")
+    .ilike("username", u)
+    .single();
+
+  if (error || !data) {
+    loginMsg.innerText="❌ User not found";
+    return;
+  }
+
+  if (data.password !== p) {
+    loginMsg.innerText="❌ Wrong password";
+    return;
+  }
 
   USER=data;
   loginBox.classList.add("hide");
 
-  if (u === "admin") {
+  // ✅ ROLE BASED ADMIN CHECK (YAHI CHANGE HAI)
+  if (USER.role === "admin") {
     adminBox.classList.remove("hide");
     loadAdminData();
   } else {
