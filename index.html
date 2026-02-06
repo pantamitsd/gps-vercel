@@ -170,7 +170,7 @@ async function punchIn(){
   if (!file) return alert("Photo required");
 
   const path = `${USER.id}/${Date.now()}_${file.name}`;
-  await sb.storage.from("ATTENDANCE-PHOTOS").upload(path, file);
+  await sb.storage.from("attendance-photos").upload(path, file);
 
   const { date, time } = getISTDateTime();
 
@@ -199,7 +199,7 @@ async function punchOut(){
   if (!file) return alert("Photo required");
 
   const path = `${USER.id}/${Date.now()}_${file.name}`;
-  await sb.storage.from("ATTENDANCE-PHOTOS").upload(path, file);
+  await sb.storage.from("attendance-photos").upload(path, file);
 
   const { date, time } = getISTDateTime();
 
@@ -222,4 +222,5 @@ async function punchOut(){
 </script>
 </body>
 </html>
+
 
