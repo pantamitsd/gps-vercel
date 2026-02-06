@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
     body { font-family: Arial, sans-serif; padding: 16px; max-width: 900px; margin: auto; }
-    input, button { width: 100%; padding: 10px; margin: 6px 0; }
+    input, button, select { width: 100%; padding: 10px; margin: 6px 0; }
     pre { background:#f5f5f5; padding:10px; white-space: pre-wrap; }
     .hide { display:none; }
     #photoInput { display:none; }
@@ -46,6 +46,21 @@
 <!-- ADMIN PANEL -->
 <div id="adminBox" class="hide">
   <h3>🛠 Admin Dashboard – Attendance Table</h3>
+
+  <select id="filterType">
+    <option value="today">Today</option>
+    <option value="yesterday">Yesterday</option>
+    <option value="custom">Custom Range</option>
+  </select>
+
+  <div id="customRange" class="hide">
+    <input type="date" id="startDate"/>
+    <input type="date" id="endDate"/>
+  </div>
+
+  <button onclick="loadAdminAttendance()">🔍 Filter</button>
+  <button onclick="exportExcel()">⬇️ Download Excel</button>
+
   <div id="adminTable"></div>
 </div>
 
@@ -59,7 +74,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const ADMIN_USER = "admin";
 const ADMIN_PASS = "admin123";
 
-let USER=null, GPS=null, ALL_LOCATIONS=[], NEAREST=null;
+let USER=null, GPS=null, ALL_LOCATIONS=[], NEAREST=null, ADMIN_DATA=[];
 
 const loginBox = document.getElementById("loginBox");
 const appBox = document.getElementById("appBox");
@@ -77,6 +92,10 @@ const openCameraBtn = document.getElementById("openCameraBtn");
 loginBtn.onclick = login;
 punchBtn.onclick = punchIn;
 punchOutBtn.onclick = punchOut;
+
+filterType.onchange = ()=> {
+  customRange.classList.toggle("hide", filterType.value !== "custom");
+};
 
 openCameraBtn.onclick = ()=> photoInput.click();
 photoInput.onchange = ()=>{
@@ -113,14 +132,49 @@ async function login(){
 }
 
 async function loadAdminAttendance(){
-  const { data } = await sb.from("attendance").select("*").order("created_at", { ascending:false });
+  const filter = filterType.value;
+  const today = new Date().toLocaleDateString("en-CA");
+
+  let q = sb.from("attendance").select("*").order("created_at", { ascending:false });
+
+  if (filter === "today") q = q.eq("punch_date", today);
+  if (filter === "yesterday") {
+    const y = new Date(); y.setDate(y.getDate()-1);
+    q = q.eq("punch_date", y.toLocaleDateString("en-CA"));
+  }
+  if (filter === "custom") {
+    if (startDate.value && endDate.value)
+      q = q.gte("punch_date", startDate.value).lte("punch_date", endDate.value);
+  }
+
+  const { data } = await q;
+  ADMIN_DATA = data || [];
+
   let html = "<table><tr><th>User</th><th>Date</th><th>Time</th><th>Type</th><th>Location</th></tr>";
-  (data||[]).forEach(r=>{
+  ADMIN_DATA.forEach(r=>{
     html += `<tr><td>${r.username}</td><td>${r.punch_date||""}</td><td>${r.punch_time||""}</td><td>${r.punch_type}</td><td>${r.location_name||""}</td></tr>`;
   });
   html += "</table>";
   adminTable.innerHTML = html;
 }
+
+function exportExcel(){
+  if (!ADMIN_DATA.length) return alert("No data");
+
+  let csv = "User,Date,Time,Type,Location\n";
+  ADMIN_DATA.forEach(r=>{
+    csv += `${r.username},${r.punch_date},${r.punch_time},${r.punch_type},${r.location_name}\n`;
+  });
+
+  const blob = new Blob([csv], { type:"text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "attendance.csv";
+  a.click();
+}
+
+/* ==== TERA ORIGINAL USER CODE AS IT IS ==== */
 
 async function loadLocations(){
   const { data } = await sb.from("locations_master").select("id,name,lat,lon");
